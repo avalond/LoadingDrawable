@@ -1,4 +1,5 @@
 package app.dinus.com.loadingdrawable.render.goods;
+
 import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.Color;
@@ -11,6 +12,7 @@ import android.util.DisplayMetrics;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.Interpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
 import app.dinus.com.loadingdrawable.render.LoadingRenderer;
 
 public class BalloonLoadingRenderer extends LoadingRenderer {
@@ -69,55 +71,55 @@ public class BalloonLoadingRenderer extends LoadingRenderer {
     private float mBalloonWidth;
     private float mBalloonHeight;
     private float mRectCornerRadius;
+    private float mStrokeWidth;
 
     private int mBalloonColor;
     private int mGasTubeColor;
     private int mCannulaColor;
     private int mPipeBodyColor;
 
-    public BalloonLoadingRenderer(Context context) {
+    private BalloonLoadingRenderer(Context context) {
         super(context);
         init(context);
         setupPaint();
     }
 
     private void init(Context context) {
-        final DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        final float screenDensity = metrics.density;
+        mTextSize = DensityUtil.dip2px(context, DEFAULT_TEXT_SIZE);
 
-        mTextSize = DEFAULT_TEXT_SIZE * screenDensity;
+        mWidth = DensityUtil.dip2px(context, DEFAULT_WIDTH);
+        mHeight = DensityUtil.dip2px(context, DEFAULT_HEIGHT);
+        mStrokeWidth = DensityUtil.dip2px(context, DEFAULT_STROKE_WIDTH);
 
-        mWidth = DEFAULT_WIDTH * screenDensity;
-        mHeight = DEFAULT_HEIGHT * screenDensity;
-        mStrokeWidth = DEFAULT_STROKE_WIDTH * screenDensity;
-
-        mGasTubeWidth = DEFAULT_GAS_TUBE_WIDTH * screenDensity;
-        mGasTubeHeight = DEFAULT_GAS_TUBE_HEIGHT * screenDensity;
-        mCannulaWidth = DEFAULT_CANNULA_WIDTH * screenDensity;
-        mCannulaHeight = DEFAULT_CANNULA_HEIGHT * screenDensity;
-        mCannulaOffsetY = DEFAULT_CANNULA_OFFSET_Y * screenDensity;
-        mCannulaMaxOffsetY = DEFAULT_CANNULA_MAX_OFFSET_Y * screenDensity;
-        mPipeBodyWidth = DEFAULT_PIPE_BODY_WIDTH * screenDensity;
-        mPipeBodyHeight = DEFAULT_PIPE_BODY_HEIGHT * screenDensity;
-        mBalloonWidth = DEFAULT_BALLOON_WIDTH * screenDensity;
-        mBalloonHeight = DEFAULT_BALLOON_HEIGHT * screenDensity;
-        mRectCornerRadius = DEFAULT_RECT_CORNER_RADIUS * screenDensity;
+        mGasTubeWidth = DensityUtil.dip2px(context, DEFAULT_GAS_TUBE_WIDTH);
+        mGasTubeHeight = DensityUtil.dip2px(context, DEFAULT_GAS_TUBE_HEIGHT);
+        mCannulaWidth = DensityUtil.dip2px(context, DEFAULT_CANNULA_WIDTH);
+        mCannulaHeight = DensityUtil.dip2px(context, DEFAULT_CANNULA_HEIGHT);
+        mCannulaOffsetY = DensityUtil.dip2px(context, DEFAULT_CANNULA_OFFSET_Y);
+        mCannulaMaxOffsetY = DensityUtil.dip2px(context, DEFAULT_CANNULA_MAX_OFFSET_Y);
+        mPipeBodyWidth = DensityUtil.dip2px(context, DEFAULT_PIPE_BODY_WIDTH);
+        mPipeBodyHeight = DensityUtil.dip2px(context, DEFAULT_PIPE_BODY_HEIGHT);
+        mBalloonWidth = DensityUtil.dip2px(context, DEFAULT_BALLOON_WIDTH);
+        mBalloonHeight = DensityUtil.dip2px(context, DEFAULT_BALLOON_HEIGHT);
+        mRectCornerRadius = DensityUtil.dip2px(context, DEFAULT_RECT_CORNER_RADIUS);
 
         mBalloonColor = DEFAULT_BALLOON_COLOR;
         mGasTubeColor = DEFAULT_GAS_TUBE_COLOR;
         mCannulaColor = DEFAULT_CANNULA_COLOR;
         mPipeBodyColor = DEFAULT_PIPE_BODY_COLOR;
 
-        setDuration(ANIMATION_DURATION);
+        mProgressText = 10 + PERCENT_SIGN;
+
+        mDuration = ANIMATION_DURATION;
     }
 
     private void setupPaint() {
         mPaint.setAntiAlias(true);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mStrokeWidth);
     }
 
     @Override
-    public void draw(Canvas canvas, Rect bounds) {
+    protected void draw(Canvas canvas, Rect bounds) {
         int saveCount = canvas.save();
 
         RectF arcBounds = mCurrentBounds;
@@ -126,7 +128,7 @@ public class BalloonLoadingRenderer extends LoadingRenderer {
         //draw draw gas tube
         mPaint.setColor(mGasTubeColor);
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mStrokeWidth);
         canvas.drawPath(createGasTubePath(mGasTubeBounds), mPaint);
 
         //draw balloon
@@ -137,14 +139,14 @@ public class BalloonLoadingRenderer extends LoadingRenderer {
         //draw progress
         mPaint.setColor(mGasTubeColor);
         mPaint.setTextSize(mTextSize);
-        mPaint.setStrokeWidth(getStrokeWidth() / 5.0f);
+        mPaint.setStrokeWidth(mStrokeWidth / 5.0f);
         canvas.drawText(mProgressText, arcBounds.centerX() - mProgressBounds.width() / 2.0f,
                 mGasTubeBounds.centerY() + mProgressBounds.height() / 2.0f, mPaint);
 
         //draw cannula
         mPaint.setColor(mCannulaColor);
         mPaint.setStyle(Paint.Style.STROKE);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mStrokeWidth);
         canvas.drawPath(createCannulaHeadPath(mCannulaBounds), mPaint);
         mPaint.setStyle(Paint.Style.FILL);
         canvas.drawPath(createCannulaBottomPath(mCannulaBounds), mPaint);
@@ -158,7 +160,7 @@ public class BalloonLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void computeRender(float renderProgress) {
+    protected void computeRender(float renderProgress) {
         RectF arcBounds = mCurrentBounds;
         //compute gas tube bounds
         mGasTubeBounds.set(arcBounds.centerX() - mGasTubeWidth / 2.0f, arcBounds.centerY(),
@@ -280,25 +282,30 @@ public class BalloonLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void setAlpha(int alpha) {
+    protected void setAlpha(int alpha) {
         mPaint.setAlpha(alpha);
-        invalidateSelf();
+
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    protected void setColorFilter(ColorFilter cf) {
         mPaint.setColorFilter(cf);
-        invalidateSelf();
     }
 
     @Override
-    public void setStrokeWidth(float strokeWidth) {
-        super.setStrokeWidth(strokeWidth);
-        mPaint.setStrokeWidth(strokeWidth);
-        invalidateSelf();
+    protected void reset() {
     }
 
-    @Override
-    public void reset() {
+    public static class Builder {
+        private Context mContext;
+
+        public Builder(Context mContext) {
+            this.mContext = mContext;
+        }
+
+        public BalloonLoadingRenderer build() {
+            BalloonLoadingRenderer loadingRenderer = new BalloonLoadingRenderer(mContext);
+            return loadingRenderer;
+        }
     }
 }

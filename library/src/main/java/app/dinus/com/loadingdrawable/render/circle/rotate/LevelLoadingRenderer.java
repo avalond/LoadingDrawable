@@ -9,12 +9,14 @@ import android.graphics.ColorFilter;
 import android.graphics.Paint;
 import android.graphics.Rect;
 import android.graphics.RectF;
+import android.support.annotation.Size;
 import android.support.v4.view.animation.FastOutSlowInInterpolator;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
 import app.dinus.com.loadingdrawable.render.LoadingRenderer;
 
 public class LevelLoadingRenderer extends LoadingRenderer {
@@ -26,18 +28,19 @@ public class LevelLoadingRenderer extends LoadingRenderer {
     private static final int NUM_POINTS = 5;
     private static final int DEGREE_360 = 360;
 
-    private static final float MIN_SWIPE_DEGREE = 0.1f;
     private static final float MAX_SWIPE_DEGREES = 0.8f * DEGREE_360;
     private static final float FULL_GROUP_ROTATION = 3.0f * DEGREE_360;
-    private static final float MAX_ROTATION_INCREMENT = 0.25f * DEGREE_360;
 
-    private static final float LEVEL2_SWEEP_ANGLE_OFFSET = 7.0f / 8.0f;
-    private static final float LEVEL3_SWEEP_ANGLE_OFFSET = 5.0f / 8.0f;
+    private static final float[] LEVEL_SWEEP_ANGLE_OFFSETS = new float[]{1.0f, 7.0f / 8.0f, 5.0f / 8.0f};
 
     private static final float START_TRIM_DURATION_OFFSET = 0.5f;
     private static final float END_TRIM_DURATION_OFFSET = 1.0f;
 
-    private static final int DEFAULT_COLOR = Color.WHITE;
+    private static final float DEFAULT_CENTER_RADIUS = 12.5f;
+    private static final float DEFAULT_STROKE_WIDTH = 2.5f;
+
+    private static final int[] DEFAULT_LEVEL_COLORS = new int[]{Color.parseColor("#55ffffff"),
+            Color.parseColor("#b1ffffff"), Color.parseColor("#ffffffff")};
 
     private final Paint mPaint = new Paint();
     private final RectF mTempBounds = new RectF();
@@ -59,9 +62,10 @@ public class LevelLoadingRenderer extends LoadingRenderer {
         }
     };
 
-    private int mLevel1Color;
-    private int mLevel2Color;
-    private int mLevel3Color;
+    @Size(3)
+    private int[] mLevelColors;
+    @Size(3)
+    private float[] mLevelSwipeDegrees;
 
     private float mStrokeInset;
 
@@ -70,187 +74,226 @@ public class LevelLoadingRenderer extends LoadingRenderer {
 
     private float mEndDegrees;
     private float mStartDegrees;
-    private float mLevel1SwipeDegrees;
-    private float mLevel2SwipeDegrees;
-    private float mLevel3SwipeDegrees;
-    private float mRotationIncrement;
     private float mOriginEndDegrees;
     private float mOriginStartDegrees;
-    private float mOriginRotationIncrement;
 
-    public LevelLoadingRenderer(Context context) {
+    private float mStrokeWidth;
+    private float mCenterRadius;
+
+    private LevelLoadingRenderer(Context context) {
         super(context);
+        init(context);
         setupPaint();
         addRenderListener(mAnimatorListener);
     }
 
+    private void init(Context context) {
+        mStrokeWidth = DensityUtil.dip2px(context, DEFAULT_STROKE_WIDTH);
+        mCenterRadius = DensityUtil.dip2px(context, DEFAULT_CENTER_RADIUS);
+
+        mLevelSwipeDegrees = new float[3];
+        mLevelColors = DEFAULT_LEVEL_COLORS;
+    }
+
     private void setupPaint() {
-        mLevel1Color = oneThirdAlphaColor(DEFAULT_COLOR);
-        mLevel2Color = twoThirdAlphaColor(DEFAULT_COLOR);
-        mLevel3Color = DEFAULT_COLOR;
 
         mPaint.setAntiAlias(true);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mStrokeWidth);
         mPaint.setStyle(Paint.Style.STROKE);
         mPaint.setStrokeCap(Paint.Cap.ROUND);
 
-        setInsets((int) getWidth(), (int) getHeight());
+        initStrokeInset((int) mWidth, (int) mHeight);
     }
 
     @Override
-    public void draw(Canvas canvas, Rect bounds) {
+    protected void draw(Canvas canvas) {
         int saveCount = canvas.save();
 
-        canvas.rotate(mGroupRotation, bounds.exactCenterX(), bounds.exactCenterY());
-        RectF arcBounds = mTempBounds;
-        arcBounds.set(bounds);
-        arcBounds.inset(mStrokeInset, mStrokeInset);
+        mTempBounds.set(mBounds);
+        mTempBounds.inset(mStrokeInset, mStrokeInset);
+        canvas.rotate(mGroupRotation, mTempBounds.centerX(), mTempBounds.centerY());
 
-        mPaint.setColor(mLevel1Color);
-        canvas.drawArc(arcBounds, mEndDegrees, mLevel1SwipeDegrees, false, mPaint);
-        mPaint.setColor(mLevel2Color);
-        canvas.drawArc(arcBounds, mEndDegrees, mLevel2SwipeDegrees, false, mPaint);
-        mPaint.setColor(mLevel3Color);
-        canvas.drawArc(arcBounds, mEndDegrees, mLevel3SwipeDegrees, false, mPaint);
+        for (int i = 0; i < 3; i++) {
+            if (mLevelSwipeDegrees[i] != 0) {
+                mPaint.setColor(mLevelColors[i]);
+                canvas.drawArc(mTempBounds, mEndDegrees, mLevelSwipeDegrees[i], false, mPaint);
+            }
+        }
 
         canvas.restoreToCount(saveCount);
     }
 
     @Override
-    public void computeRender(float renderProgress) {
-        // Moving the start trim only occurs in the first 50% of a
-        // single ring animation
+    protected void computeRender(float renderProgress) {
+        // Moving the start trim only occurs in the first 50% of a single ring animation
         if (renderProgress <= START_TRIM_DURATION_OFFSET) {
             float startTrimProgress = (renderProgress) / START_TRIM_DURATION_OFFSET;
             mStartDegrees = mOriginStartDegrees + MAX_SWIPE_DEGREES * MATERIAL_INTERPOLATOR.getInterpolation(startTrimProgress);
 
-            float mSwipeDegrees = MIN_SWIPE_DEGREE;
-            if (Math.abs(mEndDegrees - mStartDegrees) > MIN_SWIPE_DEGREE) {
-                mSwipeDegrees = mEndDegrees - mStartDegrees;
-            }
+            float mSwipeDegrees = mEndDegrees - mStartDegrees;
             float levelSwipeDegreesProgress = Math.abs(mSwipeDegrees) / MAX_SWIPE_DEGREES;
 
             float level1Increment = DECELERATE_INTERPOLATOR.getInterpolation(levelSwipeDegreesProgress) - LINEAR_INTERPOLATOR.getInterpolation(levelSwipeDegreesProgress);
             float level3Increment = ACCELERATE_INTERPOLATOR.getInterpolation(levelSwipeDegreesProgress) - LINEAR_INTERPOLATOR.getInterpolation(levelSwipeDegreesProgress);
 
-            mLevel1SwipeDegrees = -mSwipeDegrees * (1 + level1Increment);
-            mLevel2SwipeDegrees = -mSwipeDegrees * LEVEL2_SWEEP_ANGLE_OFFSET;
-            mLevel3SwipeDegrees = -mSwipeDegrees * LEVEL3_SWEEP_ANGLE_OFFSET * (1 + level3Increment);
+            mLevelSwipeDegrees[0] = -mSwipeDegrees * LEVEL_SWEEP_ANGLE_OFFSETS[0] * (1.0f + level1Increment);
+            mLevelSwipeDegrees[1] = -mSwipeDegrees * LEVEL_SWEEP_ANGLE_OFFSETS[1] * 1.0f;
+            mLevelSwipeDegrees[2] = -mSwipeDegrees * LEVEL_SWEEP_ANGLE_OFFSETS[2] * (1.0f + level3Increment);
         }
 
-        // Moving the end trim starts after 50% of a single ring
-        // animation completes
+        // Moving the end trim starts after 50% of a single ring animation
         if (renderProgress > START_TRIM_DURATION_OFFSET) {
             float endTrimProgress = (renderProgress - START_TRIM_DURATION_OFFSET) / (END_TRIM_DURATION_OFFSET - START_TRIM_DURATION_OFFSET);
             mEndDegrees = mOriginEndDegrees + MAX_SWIPE_DEGREES * MATERIAL_INTERPOLATOR.getInterpolation(endTrimProgress);
 
-            float mSwipeDegrees = MIN_SWIPE_DEGREE;
-            if (Math.abs(mEndDegrees - mStartDegrees) > MIN_SWIPE_DEGREE) {
-                mSwipeDegrees = mEndDegrees - mStartDegrees;
-            }
+            float mSwipeDegrees = mEndDegrees - mStartDegrees;
             float levelSwipeDegreesProgress = Math.abs(mSwipeDegrees) / MAX_SWIPE_DEGREES;
 
-            if (levelSwipeDegreesProgress > LEVEL2_SWEEP_ANGLE_OFFSET) {
-                mLevel1SwipeDegrees = -mSwipeDegrees;
-                mLevel2SwipeDegrees = MAX_SWIPE_DEGREES * LEVEL2_SWEEP_ANGLE_OFFSET;
-                mLevel3SwipeDegrees = MAX_SWIPE_DEGREES * LEVEL3_SWEEP_ANGLE_OFFSET;
-            } else if (levelSwipeDegreesProgress > LEVEL3_SWEEP_ANGLE_OFFSET) {
-                mLevel1SwipeDegrees = MIN_SWIPE_DEGREE;
-                mLevel2SwipeDegrees = -mSwipeDegrees;
-                mLevel3SwipeDegrees = MAX_SWIPE_DEGREES * LEVEL3_SWEEP_ANGLE_OFFSET;
+            if (levelSwipeDegreesProgress > LEVEL_SWEEP_ANGLE_OFFSETS[1]) {
+                mLevelSwipeDegrees[0] = -mSwipeDegrees;
+                mLevelSwipeDegrees[1] = MAX_SWIPE_DEGREES * LEVEL_SWEEP_ANGLE_OFFSETS[1];
+                mLevelSwipeDegrees[2] = MAX_SWIPE_DEGREES * LEVEL_SWEEP_ANGLE_OFFSETS[2];
+            } else if (levelSwipeDegreesProgress > LEVEL_SWEEP_ANGLE_OFFSETS[2]) {
+                mLevelSwipeDegrees[0] = 0;
+                mLevelSwipeDegrees[1] = -mSwipeDegrees;
+                mLevelSwipeDegrees[2] = MAX_SWIPE_DEGREES * LEVEL_SWEEP_ANGLE_OFFSETS[2];
             } else {
-                mLevel1SwipeDegrees = MIN_SWIPE_DEGREE;
-                mLevel2SwipeDegrees = MIN_SWIPE_DEGREE;
-                mLevel3SwipeDegrees = -mSwipeDegrees;
+                mLevelSwipeDegrees[0] = 0;
+                mLevelSwipeDegrees[1] = 0;
+                mLevelSwipeDegrees[2] = -mSwipeDegrees;
             }
         }
 
         mGroupRotation = ((FULL_GROUP_ROTATION / NUM_POINTS) * renderProgress) + (FULL_GROUP_ROTATION * (mRotationCount / NUM_POINTS));
-        mRotationIncrement = mOriginRotationIncrement + (MAX_ROTATION_INCREMENT * renderProgress);
     }
 
     @Override
-    public void setAlpha(int alpha) {
+    protected void setAlpha(int alpha) {
         mPaint.setAlpha(alpha);
-        invalidateSelf();
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    protected void setColorFilter(ColorFilter cf) {
         mPaint.setColorFilter(cf);
-        invalidateSelf();
     }
 
     @Override
-    public void reset() {
+    protected void reset() {
         resetOriginals();
     }
 
-    public void setColor(int color) {
-        mLevel1Color = oneThirdAlphaColor(color);
-        mLevel2Color = twoThirdAlphaColor(color);
-        mLevel3Color = color;
-    }
-
-    @Override
-    public void setStrokeWidth(float strokeWidth) {
-        super.setStrokeWidth(strokeWidth);
-        mPaint.setStrokeWidth(strokeWidth);
-        invalidateSelf();
-    }
-
-    public void setInsets(int width, int height) {
-        final float minEdge = (float) Math.min(width, height);
-        float insets;
-        if (getCenterRadius() <= 0 || minEdge < 0) {
-            insets = (float) Math.ceil(getStrokeWidth() / 2.0f);
-        } else {
-            insets = minEdge / 2.0f - getCenterRadius();
-        }
-        mStrokeInset = insets;
+    private void initStrokeInset(float width, float height) {
+        float minSize = Math.min(width, height);
+        float strokeInset = minSize / 2.0f - mCenterRadius;
+        float minStrokeInset = (float) Math.ceil(mStrokeWidth / 2.0f);
+        mStrokeInset = strokeInset < minStrokeInset ? minStrokeInset : strokeInset;
     }
 
     private void storeOriginals() {
         mOriginEndDegrees = mEndDegrees;
-        mOriginStartDegrees = mStartDegrees;
-        mOriginRotationIncrement = mRotationIncrement;
+        mOriginStartDegrees = mEndDegrees;
     }
 
     private void resetOriginals() {
         mOriginEndDegrees = 0;
         mOriginStartDegrees = 0;
-        mOriginRotationIncrement = 0;
 
         mEndDegrees = 0;
         mStartDegrees = 0;
-        mRotationIncrement = 0;
 
-        mLevel1SwipeDegrees = MIN_SWIPE_DEGREE;
-        mLevel2SwipeDegrees = MIN_SWIPE_DEGREE;
-        mLevel3SwipeDegrees = MIN_SWIPE_DEGREE;
+        mLevelSwipeDegrees[0] = 0;
+        mLevelSwipeDegrees[1] = 0;
+        mLevelSwipeDegrees[2] = 0;
     }
 
-    private int oneThirdAlphaColor(int colorValue) {
-        int startA = (colorValue >> 24) & 0xff;
-        int startR = (colorValue >> 16) & 0xff;
-        int startG = (colorValue >> 8) & 0xff;
-        int startB = colorValue & 0xff;
+    private void apply(Builder builder) {
+        this.mWidth = builder.mWidth > 0 ? builder.mWidth : this.mWidth;
+        this.mHeight = builder.mHeight > 0 ? builder.mHeight : this.mHeight;
+        this.mStrokeWidth = builder.mStrokeWidth > 0 ? builder.mStrokeWidth : this.mStrokeWidth;
+        this.mCenterRadius = builder.mCenterRadius > 0 ? builder.mCenterRadius : this.mCenterRadius;
 
-        return (startA / 3 << 24)
-                | (startR << 16)
-                | (startG << 8)
-                | startB;
+        this.mDuration = builder.mDuration > 0 ? builder.mDuration : this.mDuration;
+
+        this.mLevelColors = builder.mLevelColors != null ? builder.mLevelColors : this.mLevelColors;
+
+        setupPaint();
+        initStrokeInset(this.mWidth, this.mHeight);
     }
 
-    private int twoThirdAlphaColor(int colorValue) {
-        int startA = (colorValue >> 24) & 0xff;
-        int startR = (colorValue >> 16) & 0xff;
-        int startG = (colorValue >> 8) & 0xff;
-        int startB = colorValue & 0xff;
+    public static class Builder {
+        private Context mContext;
 
-        return (startA * 2 / 3 << 24)
-                | (startR << 16)
-                | (startG << 8)
-                | startB;
+        private int mWidth;
+        private int mHeight;
+        private int mStrokeWidth;
+        private int mCenterRadius;
+
+        private int mDuration;
+
+        @Size(3)
+        private int[] mLevelColors;
+
+        public Builder(Context mContext) {
+            this.mContext = mContext;
+        }
+
+        public Builder setWidth(int width) {
+            this.mWidth = width;
+            return this;
+        }
+
+        public Builder setHeight(int height) {
+            this.mHeight = height;
+            return this;
+        }
+
+        public Builder setStrokeWidth(int strokeWidth) {
+            this.mStrokeWidth = strokeWidth;
+            return this;
+        }
+
+        public Builder setCenterRadius(int centerRadius) {
+            this.mCenterRadius = centerRadius;
+            return this;
+        }
+
+        public Builder setDuration(int duration) {
+            this.mDuration = duration;
+            return this;
+        }
+
+        public Builder setLevelColors(@Size(3) int[] colors) {
+            this.mLevelColors = colors;
+            return this;
+        }
+
+        public Builder setLevelColor(int color) {
+            return setLevelColors(new int[]{oneThirdAlphaColor(color), twoThirdAlphaColor(color), color});
+        }
+
+        public LevelLoadingRenderer build() {
+            LevelLoadingRenderer loadingRenderer = new LevelLoadingRenderer(mContext);
+            loadingRenderer.apply(this);
+            return loadingRenderer;
+        }
+
+        private int oneThirdAlphaColor(int colorValue) {
+            int startA = (colorValue >> 24) & 0xff;
+            int startR = (colorValue >> 16) & 0xff;
+            int startG = (colorValue >> 8) & 0xff;
+            int startB = colorValue & 0xff;
+
+            return (startA / 3 << 24) | (startR << 16) | (startG << 8) | startB;
+        }
+
+        private int twoThirdAlphaColor(int colorValue) {
+            int startA = (colorValue >> 24) & 0xff;
+            int startR = (colorValue >> 16) & 0xff;
+            int startG = (colorValue >> 8) & 0xff;
+            int startB = colorValue & 0xff;
+
+            return (startA * 2 / 3 << 24) | (startR << 16) | (startG << 8) | startB;
+        }
     }
+
 }

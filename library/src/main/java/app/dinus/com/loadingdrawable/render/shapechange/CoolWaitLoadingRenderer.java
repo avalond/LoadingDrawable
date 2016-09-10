@@ -15,6 +15,7 @@ import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
 import app.dinus.com.loadingdrawable.render.LoadingRenderer;
 
 public class CoolWaitLoadingRenderer extends LoadingRenderer {
@@ -49,6 +50,7 @@ public class CoolWaitLoadingRenderer extends LoadingRenderer {
 
     private final RectF mCurrentBounds = new RectF();
 
+    private float mStrokeWidth;
     private float mWaitCircleRadius;
     private float mOriginEndDistance;
     private float mOriginStartDistance;
@@ -58,38 +60,35 @@ public class CoolWaitLoadingRenderer extends LoadingRenderer {
     private int mMiddleColor;
     private int mBottomColor;
 
-    public CoolWaitLoadingRenderer(Context context) {
+    private CoolWaitLoadingRenderer(Context context) {
         super(context);
         init(context);
         setupPaint();
     }
 
     private void init(Context context) {
-        final DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        final float screenDensity = metrics.density;
-
-        mWidth = DEFAULT_WIDTH * screenDensity;
-        mHeight = DEFAULT_HEIGHT * screenDensity;
-        mStrokeWidth = DEFAULT_STROKE_WIDTH * screenDensity;
-        mWaitCircleRadius = WAIT_CIRCLE_RADIUS * screenDensity;
+        mWidth = DensityUtil.dip2px(context, DEFAULT_WIDTH);
+        mHeight = DensityUtil.dip2px(context, DEFAULT_HEIGHT);
+        mStrokeWidth = DensityUtil.dip2px(context, DEFAULT_STROKE_WIDTH);
+        mWaitCircleRadius = DensityUtil.dip2px(context, WAIT_CIRCLE_RADIUS);
 
         mTopColor = Color.WHITE;
         mMiddleColor = Color.parseColor("#FFF3C742");
         mBottomColor = Color.parseColor("#FF89CC59");
 
-        setDuration(ANIMATION_DURATION);
+        mDuration = ANIMATION_DURATION;
     }
 
     private void setupPaint() {
         mPaint.setAntiAlias(true);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mStrokeWidth);
         mPaint.setStyle(Paint.Style.STROKE);
         mPaint.setStrokeJoin(Paint.Join.ROUND);
         mPaint.setStrokeCap(Paint.Cap.ROUND);
     }
 
     @Override
-    public void draw(Canvas canvas, Rect bounds) {
+    protected void draw(Canvas canvas, Rect bounds) {
         int saveCount = canvas.save();
         RectF arcBounds = mCurrentBounds;
         arcBounds.set(bounds);
@@ -146,7 +145,7 @@ public class CoolWaitLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void computeRender(float renderProgress) {
+    protected void computeRender(float renderProgress) {
         if (mCurrentBounds.isEmpty()) {
             return;
         }
@@ -241,20 +240,31 @@ public class CoolWaitLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void setAlpha(int alpha) {
+    protected void setAlpha(int alpha) {
         mPaint.setAlpha(alpha);
-        invalidateSelf();
+
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    protected void setColorFilter(ColorFilter cf) {
         mPaint.setColorFilter(cf);
-        invalidateSelf();
+
     }
 
     @Override
-    public void reset() {
+    protected void reset() {
     }
 
+    public static class Builder {
+        private Context mContext;
 
+        public Builder(Context mContext) {
+            this.mContext = mContext;
+        }
+
+        public CoolWaitLoadingRenderer build() {
+            CoolWaitLoadingRenderer loadingRenderer = new CoolWaitLoadingRenderer(mContext);
+            return loadingRenderer;
+        }
+    }
 }

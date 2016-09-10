@@ -6,130 +6,119 @@ import android.content.Context;
 import android.graphics.Canvas;
 import android.graphics.ColorFilter;
 import android.graphics.Rect;
+import android.graphics.RectF;
 import android.graphics.drawable.Drawable;
-import android.util.DisplayMetrics;
+import android.os.Handler;
+import android.os.Looper;
+import android.util.Log;
 import android.view.animation.Animation;
-import android.view.animation.Interpolator;
 import android.view.animation.LinearInterpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
+
 public abstract class LoadingRenderer {
-  private static final long ANIMATION_DURATION = 1333;
+    private static final long ANIMATION_DURATION = 1333;
+    private static final float DEFAULT_SIZE = 56.0f;
 
-  private static final float DEFAULT_SIZE = 56.0f;
-  private static final float DEFAULT_CENTER_RADIUS = 12.5f;
-  private static final float DEFAULT_STROKE_WIDTH = 2.5f;
+    private final ValueAnimator.AnimatorUpdateListener mAnimatorUpdateListener
+            = new ValueAnimator.AnimatorUpdateListener() {
+        @Override
+        public void onAnimationUpdate(ValueAnimator animation) {
+            computeRender((float) animation.getAnimatedValue());
+            invalidateSelf();
+        }
+    };
 
-  protected float mWidth;
-  protected float mHeight;
-  protected float mStrokeWidth;
-  protected float mCenterRadius;
+    /**
+     * Whenever {@link LoadingDrawable} boundary changes mBounds will be updated.
+     * More details you can see {@link LoadingDrawable#onBoundsChange(Rect)}
+     */
+    protected final Rect mBounds = new Rect();
 
-  private long mDuration;
-  private Drawable.Callback mCallback;
-  private ValueAnimator mRenderAnimator;
+    private Drawable.Callback mCallback;
+    private ValueAnimator mRenderAnimator;
 
-  public LoadingRenderer(Context context) {
-    setupDefaultParams(context);
-    setupAnimators();
-  }
+    protected long mDuration;
 
-  public abstract void draw(Canvas canvas, Rect bounds);
-  public abstract void computeRender(float renderProgress);
-  public abstract void setAlpha(int alpha);
-  public abstract void setColorFilter(ColorFilter cf);
-  public abstract void reset();
+    protected float mWidth;
+    protected float mHeight;
 
-  public void start() {
-    reset();
-    setDuration(mDuration);
-    mRenderAnimator.start();
-  }
+    public LoadingRenderer(Context context) {
+        initParams(context);
+        setupAnimators();
+    }
 
-  public void stop() {
-    mRenderAnimator.cancel();
-  }
+    @Deprecated
+    protected void draw(Canvas canvas, Rect bounds) {
+    }
 
-  public boolean isRunning() {
-    return mRenderAnimator.isRunning();
-  }
+    protected void draw(Canvas canvas) {
+        draw(canvas, mBounds);
+    }
 
-  public void setCallback(Drawable.Callback callback) {
-    this.mCallback = callback;
-  }
+    protected abstract void computeRender(float renderProgress);
 
-  protected void invalidateSelf() {
-    mCallback.invalidateDrawable(null);
-  }
+    protected abstract void setAlpha(int alpha);
 
-  private void setupDefaultParams(Context context) {
-    final DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-    final float screenDensity = metrics.density;
+    protected abstract void setColorFilter(ColorFilter cf);
 
-    mWidth = DEFAULT_SIZE * screenDensity;
-    mHeight = DEFAULT_SIZE * screenDensity;
-    mStrokeWidth = DEFAULT_STROKE_WIDTH * screenDensity;
-    mCenterRadius = DEFAULT_CENTER_RADIUS * screenDensity;
+    protected abstract void reset();
 
-    mDuration = ANIMATION_DURATION;
-  }
+    protected void addRenderListener(Animator.AnimatorListener animatorListener) {
+        mRenderAnimator.addListener(animatorListener);
+    }
 
-  private void setupAnimators() {
-    mRenderAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
-    mRenderAnimator.setRepeatCount(Animation.INFINITE);
-    mRenderAnimator.setRepeatMode(Animation.RESTART);
-    //fuck you! the default interpolator is AccelerateDecelerateInterpolator
-    mRenderAnimator.setInterpolator(new LinearInterpolator());
-    mRenderAnimator.addUpdateListener(new ValueAnimator.AnimatorUpdateListener() {
-      @Override
-      public void onAnimationUpdate(ValueAnimator animation) {
-        computeRender((float) animation.getAnimatedValue());
-        invalidateSelf();
-      }
-    });
-  }
+    void start() {
+        reset();
+        mRenderAnimator.addUpdateListener(mAnimatorUpdateListener);
 
-  protected void addRenderListener(Animator.AnimatorListener animatorListener) {
-    mRenderAnimator.addListener(animatorListener);
-  }
+        mRenderAnimator.setRepeatCount(ValueAnimator.INFINITE);
+        mRenderAnimator.setDuration(mDuration);
+        mRenderAnimator.start();
+    }
 
-  public void setCenterRadius(float centerRadius) {
-    mCenterRadius = centerRadius;
-  }
+    void stop() {
+        // if I just call mRenderAnimator.end(),
+        // it will always call the method onAnimationUpdate(ValueAnimator animation)
+        // why ? if you know why please send email to me (dinus_developer@163.com)
+        mRenderAnimator.removeUpdateListener(mAnimatorUpdateListener);
 
-  public float getCenterRadius() {
-    return mCenterRadius;
-  }
+        mRenderAnimator.setRepeatCount(0);
+        mRenderAnimator.setDuration(0);
+        mRenderAnimator.end();
+    }
 
-  public void setStrokeWidth(float strokeWidth) {
-    mStrokeWidth = strokeWidth;
-  }
+    boolean isRunning() {
+        return mRenderAnimator.isRunning();
+    }
 
-  public float getStrokeWidth() {
-    return mStrokeWidth;
-  }
+    void setCallback(Drawable.Callback callback) {
+        this.mCallback = callback;
+    }
 
-  public float getWidth() {
-    return mWidth;
-  }
+    void setBounds(Rect bounds) {
+        mBounds.set(bounds);
+    }
 
-  public void setWidth(float width) {
-    this.mWidth = width;
-  }
+    private void initParams(Context context) {
+        mWidth = DensityUtil.dip2px(context, DEFAULT_SIZE);
+        mHeight = DensityUtil.dip2px(context, DEFAULT_SIZE);
 
-  public float getHeight() {
-    return mHeight;
-  }
+        mDuration = ANIMATION_DURATION;
+    }
 
-  public void setHeight(float height) {
-    this.mHeight = height;
-  }
+    private void setupAnimators() {
+        mRenderAnimator = ValueAnimator.ofFloat(0.0f, 1.0f);
+        mRenderAnimator.setRepeatCount(Animation.INFINITE);
+        mRenderAnimator.setRepeatMode(Animation.RESTART);
+        mRenderAnimator.setDuration(mDuration);
+        //fuck you! the default interpolator is AccelerateDecelerateInterpolator
+        mRenderAnimator.setInterpolator(new LinearInterpolator());
+        mRenderAnimator.addUpdateListener(mAnimatorUpdateListener);
+    }
 
-  public long getDuration() {
-    return mDuration;
-  }
+    private void invalidateSelf() {
+        mCallback.invalidateDrawable(null);
+    }
 
-  public void setDuration(long duration) {
-    this.mDuration = duration;
-    mRenderAnimator.setDuration(mDuration);
-  }
 }

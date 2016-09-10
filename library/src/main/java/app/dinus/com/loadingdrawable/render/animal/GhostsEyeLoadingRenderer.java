@@ -11,6 +11,7 @@ import android.graphics.RectF;
 import android.util.DisplayMetrics;
 import android.view.animation.Interpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
 import app.dinus.com.loadingdrawable.render.LoadingRenderer;
 
 public class GhostsEyeLoadingRenderer extends LoadingRenderer {
@@ -19,7 +20,7 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
 
     private static final float DEFAULT_WIDTH = 200.0f;
     private static final float DEFAULT_HEIGHT = 176.0f;
-    private static final float DEFAULT_STROKE_WIDTH = 5.0f;
+    private static final float DEFAULT_EYE_EDGE_WIDTH = 5.0f;
 
     private static final float DEFAULT_EYE_BALL_HEIGHT = 9.0f;
     private static final float DEFAULT_EYE_BALL_WIDTH = 11.0f;
@@ -53,6 +54,7 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
     private float mAboveRadianEyeOffsetX;
     private float mEyeBallOffsetY;
 
+    private float mEyeEdgeWidth;
     private float mEyeBallWidth;
     private float mEyeBallHeight;
 
@@ -63,44 +65,41 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
 
     private int mColor;
 
-    public GhostsEyeLoadingRenderer(Context context) {
+    private GhostsEyeLoadingRenderer(Context context) {
         super(context);
         init(context);
         setupPaint();
     }
 
     private void init(Context context) {
-        final DisplayMetrics metrics = context.getResources().getDisplayMetrics();
-        final float screenDensity = metrics.density;
+        mWidth = DensityUtil.dip2px(context, DEFAULT_WIDTH);
+        mHeight = DensityUtil.dip2px(context, DEFAULT_HEIGHT);
+        mEyeEdgeWidth = DensityUtil.dip2px(context, DEFAULT_EYE_EDGE_WIDTH);
 
-        mWidth = DEFAULT_WIDTH * screenDensity;
-        mHeight = DEFAULT_HEIGHT * screenDensity;
-        mStrokeWidth = DEFAULT_STROKE_WIDTH * screenDensity;
+        mEyeInterval = DensityUtil.dip2px(context, DEFAULT_EYE_CIRCLE_INTERVAL);
+        mEyeBallOffsetY = DensityUtil.dip2px(context, DEFAULT_EYE_BALL_OFFSET_Y);
+        mEyeCircleRadius = DensityUtil.dip2px(context, DEFAULT_EYE_CIRCLE_RADIUS);
+        mMaxEyeJumptDistance = DensityUtil.dip2px(context, DEFAULT_MAX_EYE_JUMP_DISTANCE);
+        mAboveRadianEyeOffsetX = DensityUtil.dip2px(context, DEFAULT_ABOVE_RADIAN_EYE_CIRCLE_OFFSET);
 
-        mEyeInterval = DEFAULT_EYE_CIRCLE_INTERVAL * screenDensity;
-        mEyeBallOffsetY = DEFAULT_EYE_BALL_OFFSET_Y * screenDensity;
-        mEyeCircleRadius = DEFAULT_EYE_CIRCLE_RADIUS * screenDensity;
-        mMaxEyeJumptDistance = DEFAULT_MAX_EYE_JUMP_DISTANCE * screenDensity;
-        mAboveRadianEyeOffsetX = DEFAULT_ABOVE_RADIAN_EYE_CIRCLE_OFFSET * screenDensity;
-
-        mEyeBallWidth = DEFAULT_EYE_BALL_WIDTH * screenDensity;
-        mEyeBallHeight = DEFAULT_EYE_BALL_HEIGHT * screenDensity;
+        mEyeBallWidth = DensityUtil.dip2px(context, DEFAULT_EYE_BALL_WIDTH);
+        mEyeBallHeight = DensityUtil.dip2px(context, DEFAULT_EYE_BALL_HEIGHT);
 
         mColor = DEFAULT_COLOR;
 
-        setDuration(ANIMATION_DURATION);
+        mDuration = ANIMATION_DURATION;
     }
 
     private void setupPaint() {
         mPaint.setAntiAlias(true);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mPaint.setStrokeWidth(mEyeEdgeWidth);
         mPaint.setStrokeJoin(Paint.Join.ROUND);
         mPaint.setStyle(Paint.Style.STROKE);
         mPaint.setStrokeCap(Paint.Cap.ROUND);
     }
 
     @Override
-    public void draw(Canvas canvas, Rect bounds) {
+    protected void draw(Canvas canvas, Rect bounds) {
         int saveCount = canvas.save();
         RectF arcBounds = mTempBounds;
         arcBounds.set(bounds);
@@ -121,7 +120,7 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void computeRender(float renderProgress) {
+    protected void computeRender(float renderProgress) {
         if (renderProgress <= LEFT_EYE_BALL_END_JUMP_OFFSET && renderProgress >= LEFT_EYE_CIRCLE$BALL_START_JUMP_UP_OFFSET) {
             float eyeCircle$BallJumpUpProgress = (renderProgress - LEFT_EYE_CIRCLE$BALL_START_JUMP_UP_OFFSET) / (LEFT_EYE_BALL_END_JUMP_OFFSET - LEFT_EYE_CIRCLE$BALL_START_JUMP_UP_OFFSET);
             mLeftEyeBallOffsetY = -mMaxEyeJumptDistance * EYE_BALL_INTERPOLATOR.getInterpolation(eyeCircle$BallJumpUpProgress);
@@ -144,17 +143,17 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
     }
 
     @Override
-    public void setAlpha(int alpha) {
+    protected void setAlpha(int alpha) {
 
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    protected void setColorFilter(ColorFilter cf) {
 
     }
 
     @Override
-    public void reset() {
+    protected void reset() {
         mLeftEyeBallOffsetY = 0.0f;
         mRightEyeBallOffsetY = 0.0f;
         mLeftEyeCircleOffsetY = 0.0f;
@@ -244,6 +243,19 @@ public class GhostsEyeLoadingRenderer extends LoadingRenderer {
             } else {
                 return 1.0f - (input - 0.333333f) * 1.5f;
             }
+        }
+    }
+
+    public static class Builder {
+        private Context mContext;
+
+        public Builder(Context mContext) {
+            this.mContext = mContext;
+        }
+
+        public GhostsEyeLoadingRenderer build() {
+            GhostsEyeLoadingRenderer loadingRenderer = new GhostsEyeLoadingRenderer(mContext);
+            return loadingRenderer;
         }
     }
 }

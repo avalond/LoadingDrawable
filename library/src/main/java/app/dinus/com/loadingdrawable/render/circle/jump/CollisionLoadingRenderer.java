@@ -6,191 +6,283 @@ import android.graphics.Color;
 import android.graphics.ColorFilter;
 import android.graphics.LinearGradient;
 import android.graphics.Paint;
-import android.graphics.Rect;
 import android.graphics.RectF;
 import android.graphics.Shader;
-import android.support.annotation.NonNull;
-import android.util.DisplayMetrics;
-import android.util.TypedValue;
+import android.support.annotation.Size;
 import android.view.animation.AccelerateInterpolator;
 import android.view.animation.DecelerateInterpolator;
 import android.view.animation.Interpolator;
 
+import app.dinus.com.loadingdrawable.DensityUtil;
 import app.dinus.com.loadingdrawable.render.LoadingRenderer;
 
 public class CollisionLoadingRenderer extends LoadingRenderer {
     private static final Interpolator ACCELERATE_INTERPOLATOR = new AccelerateInterpolator();
     private static final Interpolator DECELERATE_INTERPOLATOR = new DecelerateInterpolator();
 
-    private static final int CIRCLE_COUNT = 7;
+    private static final int MAX_ALPHA = 255;
+    private static final int OVAL_ALPHA = 64;
 
-    //the 2 * 2 is the left and right side offset
-    private static final float DEFAULT_WIDTH = 15.0f * (CIRCLE_COUNT + 2 * 2);
-    //the 2 * 2 is the top and bottom side offset
-    private static final float DEFAULT_HEIGHT = 15.0f * (1 + 2 * 2);
+    private static final int DEFAULT_BALL_COUNT = 7;
 
-    private static final float DURATION_OFFSET = 0.25f;
+    private static final float DEFAULT_OVAL_HEIGHT = 1.5f;
+    private static final float DEFAULT_BALL_RADIUS = 7.5f;
+    private static final float DEFAULT_WIDTH = 15.0f * 11;
+    private static final float DEFAULT_HEIGHT = 15.0f * 4;
+
     private static final float START_LEFT_DURATION_OFFSET = 0.25f;
     private static final float START_RIGHT_DURATION_OFFSET = 0.5f;
     private static final float END_RIGHT_DURATION_OFFSET = 0.75f;
     private static final float END_LEFT_DURATION_OFFSET = 1.0f;
 
-    private static final int[] DEFAULT_COLORS = new int[] {
-            Color.RED, Color.GREEN
+    private static final int[] DEFAULT_COLORS = new int[]{
+            Color.parseColor("#FF28435D"), Color.parseColor("#FFC32720")
     };
 
-    private static final float[] DEFAULT_POSITIONS = new float[] {
+    private static final float[] DEFAULT_POSITIONS = new float[]{
             0.0f, 1.0f
     };
 
-    private final Paint mPaint = new Paint();
-    private final RectF mTempBounds = new RectF();
+    private final Paint mPaint = new Paint(Paint.ANTI_ALIAS_FLAG);
+    private final RectF mOvalRect = new RectF();
 
+    @Size(2)
     private int[] mColors;
     private float[] mPositions;
 
     private float mEndXOffsetProgress;
     private float mStartXOffsetProgress;
 
-    public CollisionLoadingRenderer(Context context) {
-        super(context);
-        setupPaint();
+    private float mOvalVerticalRadius;
 
-        DisplayMetrics displayMetrics = context.getResources().getDisplayMetrics();
-        mWidth = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, DEFAULT_WIDTH, displayMetrics);
-        mHeight = TypedValue.applyDimension(TypedValue.COMPLEX_UNIT_DIP, DEFAULT_HEIGHT, displayMetrics);
+    private float mBallRadius;
+    private float mBallCenterY;
+    private float mBallSideOffsets;
+    private float mBallMoveXOffsets;
+    private float mBallQuadCoefficient;
+
+    private int mBallCount;
+
+    private CollisionLoadingRenderer(Context context) {
+        super(context);
+        init(context);
+        adjustParams();
+        setupPaint();
     }
 
-    private void setupPaint() {
+    private void init(Context context) {
+        mBallRadius = DensityUtil.dip2px(context, DEFAULT_BALL_RADIUS);
+        mWidth = DensityUtil.dip2px(context, DEFAULT_WIDTH);
+        mHeight = DensityUtil.dip2px(context, DEFAULT_HEIGHT);
+        mOvalVerticalRadius = DensityUtil.dip2px(context, DEFAULT_OVAL_HEIGHT);
+
         mColors = DEFAULT_COLORS;
         mPositions = DEFAULT_POSITIONS;
 
-        mPaint.setAntiAlias(true);
-        mPaint.setStrokeWidth(getStrokeWidth());
+        mBallCount = DEFAULT_BALL_COUNT;
+
+        //mBallMoveYOffsets = mBallQuadCoefficient * mBallMoveXOffsets ^ 2
+        // ==> if mBallMoveYOffsets == mBallMoveXOffsets
+        // ==> mBallQuadCoefficient = 1.0f / mBallMoveXOffsets;
+        mBallMoveXOffsets = 1.5f * (2 * mBallRadius);
+        mBallQuadCoefficient = 1.0f / mBallMoveXOffsets;
+    }
+
+    private void adjustParams() {
+        mBallCenterY = mHeight / 2.0f;
+        mBallSideOffsets = (mWidth - mBallRadius * 2.0f * (mBallCount - 2)) / 2;
+    }
+
+    private void setupPaint() {
         mPaint.setStyle(Paint.Style.FILL);
+        mPaint.setShader(new LinearGradient(mBallSideOffsets, 0, mWidth - mBallSideOffsets, 0,
+                mColors, mPositions, Shader.TileMode.CLAMP));
     }
 
     @Override
-    public void draw(Canvas canvas, Rect bounds) {
+    protected void draw(Canvas canvas) {
         int saveCount = canvas.save();
 
-        RectF arcBounds = mTempBounds;
-        arcBounds.set(bounds);
-
-        float cy = mHeight / 2 ;
-        float circleRadius = computeCircleRadius(arcBounds);
-
-        float sideOffset = 2.0f * (2 * circleRadius);
-        float maxMoveOffset = 1.5f * (2 * circleRadius);
-
-        LinearGradient gradient = new LinearGradient(arcBounds.left + sideOffset, 0, arcBounds.right - sideOffset, 0,
-                mColors, mPositions, Shader.TileMode.CLAMP);
-        mPaint.setShader(gradient);
-
-        for (int i = 0; i < CIRCLE_COUNT; i++) {
+        for (int i = 0; i < mBallCount; i++) {
+            //yMoveOffset = mBallQuadCoefficient * xMoveOffset ^ 2
             if (i == 0 && mStartXOffsetProgress != 0) {
-                float xMoveOffset = maxMoveOffset * mStartXOffsetProgress;
-                // y = ax^2 -->  if x = sideOffset, y = sideOffset ==> a = 1 / sideOffset
-                float yMoveOffset = (float) (Math.pow(xMoveOffset, 2) / maxMoveOffset);
-                canvas.drawCircle(circleRadius + sideOffset - xMoveOffset , cy - yMoveOffset, circleRadius, mPaint);
+                float xMoveOffset = mBallMoveXOffsets * mStartXOffsetProgress;
+                float yMoveOffset = (float) (Math.pow(xMoveOffset, 2) * mBallQuadCoefficient);
+                mPaint.setAlpha(MAX_ALPHA);
+                canvas.drawCircle(mBallSideOffsets - mBallRadius - xMoveOffset, mBallCenterY - yMoveOffset, mBallRadius, mPaint);
+
+                float leftStartProgress = 1.0f - mStartXOffsetProgress;
+                mOvalRect.set(mBallSideOffsets - mBallRadius - mBallRadius * leftStartProgress - xMoveOffset,
+                        mHeight - mOvalVerticalRadius - mOvalVerticalRadius * leftStartProgress,
+                        mBallSideOffsets - mBallRadius + mBallRadius * leftStartProgress - xMoveOffset,
+                        mHeight - mOvalVerticalRadius + mOvalVerticalRadius * leftStartProgress);
+                mPaint.setAlpha(OVAL_ALPHA);
+                canvas.drawOval(mOvalRect, mPaint);
                 continue;
             }
 
-            if (i == CIRCLE_COUNT - 1 && mEndXOffsetProgress != 0) {
-                float xMoveOffset = maxMoveOffset * mEndXOffsetProgress;
-                // y = ax^2 -->  if x = sideOffset, y = sideOffset / 2 ==> a = 1 / sideOffset
-                float yMoveOffset = (float) (Math.pow(xMoveOffset, 2) / maxMoveOffset);
-                canvas.drawCircle(circleRadius * (CIRCLE_COUNT * 2 - 1) + sideOffset + xMoveOffset , cy - yMoveOffset, circleRadius, mPaint);
+            if (i == mBallCount - 1 && mEndXOffsetProgress != 0) {
+                float xMoveOffset = mBallMoveXOffsets * mEndXOffsetProgress;
+                float yMoveOffset = (float) (Math.pow(xMoveOffset, 2) * mBallQuadCoefficient);
+                mPaint.setAlpha(MAX_ALPHA);
+                canvas.drawCircle(mBallRadius * (mBallCount * 2 - 3) + mBallSideOffsets + xMoveOffset, mBallCenterY - yMoveOffset, mBallRadius, mPaint);
+
+                float leftEndProgress = 1.0f - mEndXOffsetProgress;
+                mOvalRect.set(mBallRadius * (mBallCount * 2 - 3) - mBallRadius * leftEndProgress + mBallSideOffsets + xMoveOffset,
+                        mHeight - mOvalVerticalRadius - mOvalVerticalRadius * leftEndProgress,
+                        mBallRadius * (mBallCount * 2 - 3) + mBallRadius * leftEndProgress + mBallSideOffsets + xMoveOffset,
+                        mHeight - mOvalVerticalRadius + mOvalVerticalRadius * leftEndProgress);
+                mPaint.setAlpha(OVAL_ALPHA);
+                canvas.drawOval(mOvalRect, mPaint);
                 continue;
             }
 
-            canvas.drawCircle(circleRadius * (i * 2 + 1) + sideOffset , cy, circleRadius, mPaint);
+            mPaint.setAlpha(MAX_ALPHA);
+            canvas.drawCircle(mBallRadius * (i * 2 - 1) + mBallSideOffsets, mBallCenterY, mBallRadius, mPaint);
+
+            mOvalRect.set(mBallRadius * (i * 2 - 2) + mBallSideOffsets, mHeight - mOvalVerticalRadius * 2,
+                    mBallRadius * (i * 2) + mBallSideOffsets, mHeight);
+            mPaint.setAlpha(OVAL_ALPHA);
+            canvas.drawOval(mOvalRect, mPaint);
         }
 
         canvas.restoreToCount(saveCount);
     }
 
-    private float computeCircleRadius(RectF rectBounds) {
-        float width = rectBounds.width();
-        float height = rectBounds.height();
-
-        //CIRCLE_COUNT + 4 is the sliding distance of both sides
-        float radius = Math.min(width / (CIRCLE_COUNT + 4) / 2, height / 2);
-        return radius;
-    }
-
     @Override
-    public void computeRender(float renderProgress) {
-
-        // Moving the start offset to left only occurs in the first 25% of a
-        // single ring animation
+    protected void computeRender(float renderProgress) {
+        // Moving the left ball to the left sides only occurs in the first 25% of a jump animation
         if (renderProgress <= START_LEFT_DURATION_OFFSET) {
-            float startLeftOffsetProgress = renderProgress / DURATION_OFFSET;
+            float startLeftOffsetProgress = renderProgress / START_LEFT_DURATION_OFFSET;
             mStartXOffsetProgress = DECELERATE_INTERPOLATOR.getInterpolation(startLeftOffsetProgress);
-
-            invalidateSelf();
-            return ;
+            return;
         }
 
-        // Moving the start offset to left only occurs between 25% and 50% of a
-        // single ring animation
+        // Moving the left ball to the origin location only occurs between 25% and 50% of a jump ring animation
         if (renderProgress <= START_RIGHT_DURATION_OFFSET) {
-            float startRightOffsetProgress = (renderProgress - START_LEFT_DURATION_OFFSET) / DURATION_OFFSET;
+            float startRightOffsetProgress = (renderProgress - START_LEFT_DURATION_OFFSET) / (START_RIGHT_DURATION_OFFSET - START_LEFT_DURATION_OFFSET);
             mStartXOffsetProgress = ACCELERATE_INTERPOLATOR.getInterpolation(1.0f - startRightOffsetProgress);
-
-            invalidateSelf();
-            return ;
+            return;
         }
 
-        // Moving the end offset to right starts between 50% and 75% a single ring
-        // animation completes
+        // Moving the right ball to the right sides only occurs between 50% and 75% of a jump animation
         if (renderProgress <= END_RIGHT_DURATION_OFFSET) {
-            float endRightOffsetProgress = (renderProgress - START_RIGHT_DURATION_OFFSET) / DURATION_OFFSET;
+            float endRightOffsetProgress = (renderProgress - START_RIGHT_DURATION_OFFSET) / (END_RIGHT_DURATION_OFFSET - START_RIGHT_DURATION_OFFSET);
             mEndXOffsetProgress = DECELERATE_INTERPOLATOR.getInterpolation(endRightOffsetProgress);
-
-            invalidateSelf();
-            return ;
+            return;
         }
 
-        // Moving the end offset to left starts after 75% of a single ring
-        // animation completes
+        // Moving the right ball to the origin location only occurs after 75% of a jump animation
         if (renderProgress <= END_LEFT_DURATION_OFFSET) {
-            float endRightOffsetProgress = (renderProgress - END_RIGHT_DURATION_OFFSET) / DURATION_OFFSET;
+            float endRightOffsetProgress = (renderProgress - END_RIGHT_DURATION_OFFSET) / (END_LEFT_DURATION_OFFSET - END_RIGHT_DURATION_OFFSET);
             mEndXOffsetProgress = ACCELERATE_INTERPOLATOR.getInterpolation(1 - endRightOffsetProgress);
-
-            invalidateSelf();
-            return ;
+            return;
         }
     }
 
     @Override
-    public void setAlpha(int alpha) {
+    protected void setAlpha(int alpha) {
         mPaint.setAlpha(alpha);
-        invalidateSelf();
     }
 
     @Override
-    public void setColorFilter(ColorFilter cf) {
+    protected void setColorFilter(ColorFilter cf) {
         mPaint.setColorFilter(cf);
-        invalidateSelf();
     }
 
     @Override
-    public void reset() {
+    protected void reset() {
     }
 
-    public void setColors(@NonNull int[] colors) {
-        mColors = colors;
+    private void apply(Builder builder) {
+        this.mWidth = builder.mWidth > 0 ? builder.mWidth : this.mWidth;
+        this.mHeight = builder.mHeight > 0 ? builder.mHeight : this.mHeight;
+
+        this.mOvalVerticalRadius = builder.mOvalVerticalRadius > 0 ? builder.mOvalVerticalRadius : this.mOvalVerticalRadius;
+        this.mBallRadius = builder.mBallRadius > 0 ? builder.mBallRadius : this.mBallRadius;
+        this.mBallMoveXOffsets = builder.mBallMoveXOffsets > 0 ? builder.mBallMoveXOffsets : this.mBallMoveXOffsets;
+        this.mBallQuadCoefficient = builder.mBallQuadCoefficient > 0 ? builder.mBallQuadCoefficient : this.mBallQuadCoefficient;
+        this.mBallCount = builder.mBallCount > 0 ? builder.mBallCount : this.mBallCount;
+
+        this.mDuration = builder.mDuration > 0 ? builder.mDuration : this.mDuration;
+
+        this.mColors = builder.mColors != null ? builder.mColors : this.mColors;
+
+        adjustParams();
+        setupPaint();
     }
 
-    public void setPositions(@NonNull float[] positions) {
-        mPositions = positions;
-    }
+    public static class Builder {
+        private Context mContext;
 
-    @Override
-    public void setStrokeWidth(float strokeWidth) {
-        super.setStrokeWidth(strokeWidth);
-        mPaint.setStrokeWidth(strokeWidth);
-        invalidateSelf();
+        private int mWidth;
+        private int mHeight;
+
+        private float mOvalVerticalRadius;
+
+        private int mBallCount;
+        private float mBallRadius;
+        private float mBallMoveXOffsets;
+        private float mBallQuadCoefficient;
+
+        private int mDuration;
+
+        @Size(2)
+        private int[] mColors;
+
+        public Builder(Context mContext) {
+            this.mContext = mContext;
+        }
+
+        public Builder setWidth(int width) {
+            this.mWidth = width;
+            return this;
+        }
+
+        public Builder setHeight(int height) {
+            this.mHeight = height;
+            return this;
+        }
+
+        public Builder setOvalVerticalRadius(int ovalVerticalRadius) {
+            this.mOvalVerticalRadius = ovalVerticalRadius;
+            return this;
+        }
+
+        public Builder setBallRadius(int ballRadius) {
+            this.mBallRadius = ballRadius;
+            return this;
+        }
+
+        public Builder setBallMoveXOffsets(int ballMoveXOffsets) {
+            this.mBallMoveXOffsets = ballMoveXOffsets;
+            return this;
+        }
+
+        public Builder setBallQuadCoefficient(int ballQuadCoefficient) {
+            this.mBallQuadCoefficient = ballQuadCoefficient;
+            return this;
+        }
+
+        public Builder setBallCount(int ballCount) {
+            this.mBallCount = ballCount;
+            return this;
+        }
+
+        public Builder setColors(@Size(2) int[] colors) {
+            this.mColors = colors;
+            return this;
+        }
+
+        public Builder setDuration(int duration) {
+            this.mDuration = duration;
+            return this;
+        }
+
+        public CollisionLoadingRenderer build() {
+            CollisionLoadingRenderer loadingRenderer = new CollisionLoadingRenderer(mContext);
+            loadingRenderer.apply(this);
+            return loadingRenderer;
+        }
     }
 }
